@@ -1,2 +1,2 @@
-# html-web-maping
+# html-web-mapping
 html
