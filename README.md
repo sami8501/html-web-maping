@@ -37,7 +37,7 @@ Les données utilisées pour cette carte proviennent de la Base Permanente des �
 ## Installation et Utilisation
 
 1. Clonez ce dépôt sur votre machine locale.
-2. Ouvrez le fichier `index.html` dans un navigateur web moderne.
+2. Ouvrez le fichier `.html` dans un navigateur web moderne.
 
 Note : Une connexion internet est nécessaire pour charger les tuiles de la carte et les données GeoJSON.
 
