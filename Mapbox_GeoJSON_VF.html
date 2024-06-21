@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8' />
+    <title>Carte interactive</title>
+    <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+    <script src='https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.js'></script>
+    <link href='https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.css' rel='stylesheet' />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.7.5/proj4.js"></script>
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        .legend { position: absolute; top: 10px; right: 10px; background-color: rgba(255, 255, 255, 0.8); padding: 10px; font-family: Arial, sans-serif; font-size: 12px; line-height: 18px; border-radius: 3px; }
+        .legend-item { display: flex; align-items: center; margin-bottom: 5px; }
+        .legend-key { width: 20px; height: 20px; margin-right: 5px; }
+        .info-block {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            line-height: 1.5;
+            border-radius: 3px;
+            max-width: 300px;
+            z-index: 1;
+        }
+    </style>
+</head>
+<body>
+    <div id='map'></div>
+    <div class='legend' id='legend'></div>
+    <div id='info-block' class='info-block'></div>
+
+    <script>
+        mapboxgl.accessToken = 'Ajouter_ici_votre_jetons_d-accès_API';
+
+        // Définition des projections
+        proj4.defs("EPSG:2154", "+proj=lcc +lat_1=49 +lat_2=44 +lat_0=46.5 +lon_0=3 +x_0=700000 +y_0=6600000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs");
+        proj4.defs("EPSG:4326", "+proj=longlat +datum=WGS84 +no_defs");
+
+        // Objet associant les codes aux libellés
+        const typeLabels = {
+            'D201': 'MÉDECIN GÉNÉRALISTE',
+            'D202': 'SPÉCIALISTE EN CARDIOLOGIE',
+            'D210': 'SPÉCIALISTE EN PÉDIATRIE',
+            'D221': 'CHIRURGIEN DENTISTE',
+            'D232': 'INFIRMIER'
+        };
+
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/streets-v11',
+            center: [2.213749, 46.227638], // Centre approximatif de la France
+            zoom: 5
+        });
+
+        // Ajout du bloc d'informations
+        const infoBlock = document.getElementById('info-block');
+        infoBlock.innerHTML = `
+            <p><strong>Carte basée sur les données de la Base Permanente des Equipements de l'INSEE, 2020.</strong></p>
+            <p>Sources : Mapbox, 2024 ; BPE, 2020.</p>
+            <p>Réalisation : Sami Ramzi Chibane, 2024</p>
+        `;
+
+        map.on('load', () => {
+            console.log('Chargement de la carte terminé, début du chargement du GeoJSON...');
+            fetch('https://raw.githubusercontent.com/sami8501/html-web-maping/main/BPE_TCM_2020_avec_X_Y_sante_test.geojson')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Données GeoJSON parsées:', data);
+                    
+                    // Convertir les coordonnées
+                    data.features.forEach(feature => {
+                        const [x, y] = feature.geometry.coordinates;
+                        const [lon, lat] = proj4("EPSG:2154", "EPSG:4326", [x, y]);
+                        feature.geometry.coordinates = [lon, lat];
+                    });
+
+                    map.addSource('points', {
+                        type: 'geojson',
+                        data: data
+                    });
+
+                    map.addLayer({
+                        id: 'points',
+                        type: 'circle',
+                        source: 'points',
+                        paint: {
+                            'circle-radius': 4.5,
+                            'circle-color': [
+                                'match',
+                                ['get', 'TYPEQU'],
+                                'D201', 'red',
+                                'D202', 'blue',
+                                'D210', 'green',
+                                'D221', '#EC33FF',
+                                'D232', '#12F1FC',
+                                'gray'
+                            ]
+                        }
+                    });
+
+                    // Ajustez la vue pour inclure tous les points
+                    const bounds = new mapboxgl.LngLatBounds();
+                    data.features.forEach(feature => {
+                        bounds.extend(feature.geometry.coordinates);
+                    });
+                    map.fitBounds(bounds, { padding: 50 });
+
+                    // Créer la légende avec les libellés
+                    const legendContainer = document.getElementById('legend');
+                    const uniqueTypes = [...new Set(data.features.map(f => f.properties.TYPEQU))];
+                    uniqueTypes.forEach(type => {
+                        const legendItem = document.createElement('div');
+                        legendItem.className = 'legend-item';
+
+                        const legendKey = document.createElement('span');
+                        legendKey.className = 'legend-key';
+                        legendKey.style.backgroundColor = getColor(type);
+
+                        const legendLabel = document.createElement('span');
+                        legendLabel.textContent = typeLabels[type] || type; // Utilise le libellé s'il existe, sinon le code
+
+                        legendItem.appendChild(legendKey);
+                        legendItem.appendChild(legendLabel);
+                        legendContainer.appendChild(legendItem);
+                    });
+                })
+                .catch(error => {
+                    console.error('Erreur lors du chargement du GeoJSON:', error);
+                    alert('Erreur lors du chargement des données. Veuillez vérifier la console pour plus de détails.');
+                });
+        });
+
+        function getColor(type) {
+            switch (type) {
+                case 'D201': return 'red';
+                case 'D202': return 'blue';
+                case 'D210': return 'green';
+                case 'D221': return '#EC33FF';
+                case 'D232': return '#12F1FC';
+                default: return 'gray';
+            }
+        }
+    </script>
+</body>
+</html>
